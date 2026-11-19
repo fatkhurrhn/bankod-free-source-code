@@ -3,50 +3,231 @@ import Layout from "../layouts/Layout.astro";
 ---
 
 <Layout>
-  <div class="max-w-5xl mx-auto p-8">
-    <h1 class="text-2xl font-bold mb-6">Katalog Source Code</h1>
+  <header class="border-b border-gray-200 bg-white">
+    <div class="max-w-6xl mx-auto px-6 py-8">
+      <div class="flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 class="text-3xl font-bold tracking-tight">Bankod</h1>
+          <p class="text-sm text-gray-500 mt-1">Kumpulan source code gratis, siap download & pakai.</p>
+        </div>
+        <div class="flex items-center gap-6 text-sm">
+          <div class="text-right">
+            <div id="totalItems" class="text-2xl font-bold text-gray-900">0</div>
+            <div class="text-gray-500 text-xs uppercase tracking-wide">Source Code</div>
+          </div>
+          <div class="w-px h-10 bg-gray-200"></div>
+          <div class="text-right">
+            <div id="totalDownloads" class="text-2xl font-bold text-gray-900">0</div>
+            <div class="text-gray-500 text-xs uppercase tracking-wide">Total Download</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-6 py-8">
+    <div class="mb-6 space-y-3">
+      <div>
+        <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Kategori</div>
+        <div id="filterKategori" class="flex flex-wrap gap-2"></div>
+      </div>
+      <div>
+        <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Stack</div>
+        <div id="filterStack" class="flex flex-wrap gap-2"></div>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">Katalog</h2>
+      <div class="flex items-center gap-3">
+        <span id="count" class="text-sm text-gray-500"></span>
+        <button id="resetFilter" class="text-xs text-blue-600 hover:underline hidden">Reset filter</button>
+      </div>
+    </div>
 
     <p id="loading" class="text-sm text-gray-500">Memuat data...</p>
     <p id="empty" class="text-sm text-gray-500 hidden">Belum ada source code.</p>
+    <p id="noMatch" class="text-sm text-gray-500 hidden">Tidak ada yang cocok dengan filter.</p>
 
-    <div id="grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 hidden"></div>
-  </div>
+    <div id="grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 hidden"></div>
+  </main>
+
+  <footer class="border-t border-gray-200 mt-16 bg-white">
+    <div class="max-w-6xl mx-auto px-6 py-6 text-sm text-gray-500 flex items-center justify-between">
+      <span>&copy; ${new Date().getFullYear()} Bankod</span>
+      <a href="/admin" class="hover:text-gray-900 no-underline text-gray-500">Admin</a>
+    </div>
+  </footer>
 </Layout>
 
 <script>
-  import { getSources, type SourceItem } from "../lib/source";
+  import { getSources, incrementDownload, type SourceItem } from "../lib/source";
+  import { DEFAULT_THUMBNAIL } from "../lib/constants";
 
   const grid = document.getElementById("grid")!;
   const loading = document.getElementById("loading")!;
   const empty = document.getElementById("empty")!;
+  const noMatch = document.getElementById("noMatch")!;
+  const countEl = document.getElementById("count")!;
+  const totalItems = document.getElementById("totalItems")!;
+  const totalDownloads = document.getElementById("totalDownloads")!;
+  const filterKategori = document.getElementById("filterKategori")!;
+  const filterStack = document.getElementById("filterStack")!;
+  const resetFilter = document.getElementById("resetFilter")!;
 
+  let items: SourceItem[] = [];
+  let activeKategori: string | null = null;
+  const activeStacks = new Set<string>();
+
+  function esc(s: string) {
+    return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+  }
+  function fmt(n: number) {
+    return n.toLocaleString("id-ID");
+  }
+
+  function updateTotals() {
+    totalItems.textContent = fmt(items.length);
+    totalDownloads.textContent = fmt(items.reduce((a, it) => a + (it.downloadCount ?? 0), 0));
+  }
+
+  // ===== Filter UI =====
+  function buildFilters() {
+    // Kategori unik
+    const kats = Array.from(new Set(items.map((i) => i.kategori).filter(Boolean))).sort();
+    filterKategori.innerHTML =
+      `<button class="filter-kat text-xs px-3 py-1 rounded-full border ${activeKategori === null ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"}" data-kat="">Semua</button>` +
+      kats
+        .map(
+          (k) =>
+            `<button class="filter-kat text-xs px-3 py-1 rounded-full border ${activeKategori === k ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"}" data-kat="${esc(k)}">${esc(k)}</button>`
+        )
+        .join("");
+
+    // Stack unik
+    const stacks = Array.from(new Set(items.flatMap((i) => i.stack))).sort();
+    filterStack.innerHTML = stacks
+      .map(
+        (s) =>
+          `<button class="filter-stack text-xs px-3 py-1 rounded-full border ${activeStacks.has(s) ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"}" data-stack="${esc(s)}">${esc(s)}</button>`
+      )
+      .join("");
+
+    filterKategori.querySelectorAll(".filter-kat").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const k = (btn as HTMLButtonElement).dataset.kat || "";
+        activeKategori = k || null;
+        buildFilters();
+        render();
+      });
+    });
+
+    filterStack.querySelectorAll(".filter-stack").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const s = (btn as HTMLButtonElement).dataset.stack!;
+        if (activeStacks.has(s)) activeStacks.delete(s);
+        else activeStacks.add(s);
+        buildFilters();
+        render();
+      });
+    });
+
+    resetFilter.classList.toggle("hidden", activeKategori === null && activeStacks.size === 0);
+  }
+
+  // ===== Render grid =====
+  function render() {
+    const filtered = items.filter((it) => {
+      if (activeKategori && it.kategori !== activeKategori) return false;
+      if (activeStacks.size > 0 && !it.stack.some((s) => activeStacks.has(s))) return false;
+      return true;
+    });
+
+    countEl.textContent = `${filtered.length} dari ${items.length} item`;
+    grid.innerHTML = "";
+    noMatch.classList.toggle("hidden", filtered.length > 0 || items.length === 0);
+
+    if (filtered.length === 0) {
+      grid.classList.add("hidden");
+      return;
+    }
+    grid.classList.remove("hidden");
+
+    grid.innerHTML = filtered
+      .map(
+        (item) => `
+        <div class="group border border-gray-200 rounded-xl overflow-hidden flex flex-col bg-white hover:shadow-lg hover:-translate-y-0.5 transition-all">
+          <div class="relative overflow-hidden bg-gray-100">
+            <img src="${esc(item.thumbnail || DEFAULT_THUMBNAIL)}" alt="${esc(item.nama)}"
+              class="w-full block aspect-video object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+          </div>
+          <div class="p-4 flex flex-col flex-1">
+            <div class="flex items-center gap-1 mb-1">
+              ${item.kategori ? `<span class="text-[0.65rem] font-medium text-blue-600 uppercase tracking-wide">${esc(item.kategori)}</span>` : ""}
+            </div>
+            <h3 class="text-base font-semibold mb-2 line-clamp-2 leading-snug">${esc(item.nama)}</h3>
+            <div class="flex flex-wrap gap-1 mb-4">
+              ${item.stack.map((s) => `<span class="text-[0.7rem] font-medium bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">${esc(s)}</span>`).join("")}
+            </div>
+            <div class="mt-auto flex items-center justify-between gap-2 pt-2 border-t border-gray-100">
+              <span class="text-xs text-gray-500 whitespace-nowrap">
+                <span class="font-semibold text-gray-700">${fmt(item.downloadCount ?? 0)}×</span> download
+              </span>
+              <button
+                class="download-btn px-4 py-1.5 bg-gray-900 hover:bg-gray-700 text-white rounded-md text-sm cursor-pointer border-0 transition-colors"
+                data-id="${item.id}"
+                data-url="${esc(item.download)}"
+              >Download</button>
+            </div>
+          </div>
+        </div>
+      `
+      )
+      .join("");
+
+    grid.querySelectorAll(".download-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const b = btn as HTMLButtonElement;
+        const id = b.dataset.id!;
+        const url = b.dataset.url!;
+        b.disabled = true;
+        const original = b.textContent;
+        b.textContent = "Membuka...";
+        try {
+          await incrementDownload(id);
+          const found = items.find((x) => x.id === id);
+          if (found) {
+            found.downloadCount = (found.downloadCount ?? 0) + 1;
+            updateTotals();
+          }
+        } catch {}
+        window.open(url, "_blank", "noopener");
+        b.disabled = false;
+        b.textContent = original;
+      });
+    });
+  }
+
+  // ===== Init =====
   try {
-    const items = await getSources();
+    items = await getSources();
     loading.classList.add("hidden");
+    updateTotals();
 
     if (items.length === 0) {
       empty.classList.remove("hidden");
     } else {
-      grid.classList.remove("hidden");
-      grid.innerHTML = items
-        .map(
-          (item: SourceItem) => `
-          <div class="border border-gray-200 rounded-xl overflow-hidden flex flex-col">
-            <img src="${item.thumbnail}" alt="${item.nama}" class="w-full block aspect-video object-cover" />
-            <h2 class="text-base font-semibold mt-3 mx-4 mb-2">${item.nama}</h2>
-            <div class="flex flex-wrap gap-1 px-4">
-              ${item.stack.map((s) => `<span class="text-[0.7rem] bg-gray-100 px-2 py-0.5 rounded-full">${s}</span>`).join("")}
-            </div>
-            <a href="${item.download}" target="_blank" rel="noopener"
-              class="mt-3 mx-4 mb-4 py-2 text-center bg-gray-900 text-white rounded-md text-sm no-underline">
-              Download
-            </a>
-          </div>
-        `
-        )
-        .join("");
+      buildFilters();
+      render();
     }
   } catch (err: any) {
     loading.textContent = "Gagal memuat: " + (err?.message ?? "unknown");
   }
+
+  resetFilter.addEventListener("click", () => {
+    activeKategori = null;
+    activeStacks.clear();
+    buildFilters();
+    render();
+  });
 </script>
