@@ -1,0 +1,52 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout>
+  <div class="max-w-5xl mx-auto p-8">
+    <h1 class="text-2xl font-bold mb-6">Katalog Source Code</h1>
+
+    <p id="loading" class="text-sm text-gray-500">Memuat data...</p>
+    <p id="empty" class="text-sm text-gray-500 hidden">Belum ada source code.</p>
+
+    <div id="grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 hidden"></div>
+  </div>
+</Layout>
+
+<script>
+  import { getSources, type SourceItem } from "../lib/source";
+
+  const grid = document.getElementById("grid")!;
+  const loading = document.getElementById("loading")!;
+  const empty = document.getElementById("empty")!;
+
+  try {
+    const items = await getSources();
+    loading.classList.add("hidden");
+
+    if (items.length === 0) {
+      empty.classList.remove("hidden");
+    } else {
+      grid.classList.remove("hidden");
+      grid.innerHTML = items
+        .map(
+          (item: SourceItem) => `
+          <div class="border border-gray-200 rounded-xl overflow-hidden flex flex-col">
+            <img src="${item.thumbnail}" alt="${item.nama}" class="w-full block aspect-video object-cover" />
+            <h2 class="text-base font-semibold mt-3 mx-4 mb-2">${item.nama}</h2>
+            <div class="flex flex-wrap gap-1 px-4">
+              ${item.stack.map((s) => `<span class="text-[0.7rem] bg-gray-100 px-2 py-0.5 rounded-full">${s}</span>`).join("")}
+            </div>
+            <a href="${item.download}" target="_blank" rel="noopener"
+              class="mt-3 mx-4 mb-4 py-2 text-center bg-gray-900 text-white rounded-md text-sm no-underline">
+              Download
+            </a>
+          </div>
+        `
+        )
+        .join("");
+    }
+  } catch (err: any) {
+    loading.textContent = "Gagal memuat: " + (err?.message ?? "unknown");
+  }
+</script>

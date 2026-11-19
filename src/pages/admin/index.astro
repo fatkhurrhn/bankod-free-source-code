@@ -1,0 +1,155 @@
+---
+import Layout from "../../layouts/Layout.astro";
+---
+
+<Layout>
+  <div class="max-w-4xl mx-auto p-8">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-xl font-semibold">Kelola Source Code</h1>
+      <div class="flex gap-2">
+        <a href="/admin/form" class="bg-gray-900 text-white px-4 py-2 rounded-md text-sm no-underline">
+          + Tambah
+        </a>
+        <button id="logoutBtn" class="border border-gray-300 px-4 py-2 rounded-md text-sm">
+          Logout
+        </button>
+      </div>
+    </div>
+
+    <p id="loading" class="text-sm text-gray-500">Memuat data...</p>
+
+    <table id="table" class="w-full text-sm border-collapse hidden">
+      <thead>
+        <tr class="text-left border-b border-gray-200">
+          <th class="py-2">Nama</th>
+          <th class="py-2">Stack</th>
+          <th class="py-2 text-right">Aksi</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+
+    <p id="empty" class="text-sm text-gray-500 hidden">Belum ada data.</p>
+  </div>
+
+  <div id="deleteModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-full max-w-sm mx-4">
+      <h2 class="text-lg font-semibold mb-2">Hapus data ini?</h2>
+      <p class="text-sm text-gray-600 mb-6">Data yang dihapus tidak bisa dikembalikan.</p>
+      <div class="flex justify-end gap-2">
+        <button id="cancelDelete" class="border border-gray-300 px-4 py-2 rounded-md text-sm">Batal</button>
+        <button id="confirmDelete" class="bg-red-600 text-white px-4 py-2 rounded-md text-sm">Hapus</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="logoutModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 w-full max-w-sm mx-4">
+      <h2 class="text-lg font-semibold mb-2">Keluar dari admin?</h2>
+      <p class="text-sm text-gray-600 mb-6">Kamu perlu login lagi untuk mengakses halaman admin.</p>
+      <div class="flex justify-end gap-2">
+        <button id="cancelLogout" class="border border-gray-300 px-4 py-2 rounded-md text-sm">Batal</button>
+        <button id="confirmLogout" class="bg-red-600 text-white px-4 py-2 rounded-md text-sm">Logout</button>
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  import "../../lib/guard";
+  import { signOut } from "firebase/auth";
+  import { auth } from "../../lib/firebase";
+  import { getSources, deleteSource, type SourceItem } from "../../lib/source";
+
+  // Modal helper
+  function openModal(el: HTMLElement) {
+    el.classList.remove("hidden");
+    el.classList.add("flex");
+  }
+  function closeModal(el: HTMLElement) {
+    el.classList.add("hidden");
+    el.classList.remove("flex");
+  }
+
+  // Logout
+  const logoutModal = document.getElementById("logoutModal")!;
+  document.getElementById("logoutBtn")?.addEventListener("click", () => openModal(logoutModal));
+  document.getElementById("cancelLogout")?.addEventListener("click", () => closeModal(logoutModal));
+  document.getElementById("confirmLogout")?.addEventListener("click", async () => {
+    await signOut(auth);
+    window.location.href = "/admin/login";
+  });
+
+  // Load data
+  const tbody = document.getElementById("tbody")!;
+  const table = document.getElementById("table")!;
+  const loading = document.getElementById("loading")!;
+  const empty = document.getElementById("empty")!;
+
+  let items: SourceItem[] = [];
+
+  async function load() {
+    try {
+      items = await getSources();
+      loading.classList.add("hidden");
+
+      if (items.length === 0) {
+        empty.classList.remove("hidden");
+        return;
+      }
+
+      table.classList.remove("hidden");
+      tbody.innerHTML = items
+        .map(
+          (item) => `
+          <tr class="border-b border-gray-100">
+            <td class="py-3">${item.nama}</td>
+            <td class="py-3">
+              <div class="flex flex-wrap gap-1">
+                ${item.stack.map((s) => `<span class="text-[0.7rem] bg-gray-100 px-2 py-0.5 rounded-full">${s}</span>`).join("")}
+              </div>
+            </td>
+            <td class="py-3 text-right whitespace-nowrap">
+              <a href="/admin/form?id=${item.id}" class="text-blue-600 mr-4 no-underline">Edit</a>
+              <button class="text-red-600 delete-btn" data-id="${item.id}" data-nama="${item.nama}">Hapus</button>
+            </td>
+          </tr>
+        `
+        )
+        .join("");
+
+      bindDeleteButtons();
+    } catch (err: any) {
+      loading.textContent = "Gagal memuat data: " + (err?.message ?? "unknown");
+    }
+  }
+
+  // Delete
+  const deleteModal = document.getElementById("deleteModal")!;
+  let pendingId: string | null = null;
+
+  function bindDeleteButtons() {
+    document.querySelectorAll(".delete-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        pendingId = (btn as HTMLButtonElement).dataset.id || null;
+        openModal(deleteModal);
+      });
+    });
+  }
+
+  document.getElementById("cancelDelete")?.addEventListener("click", () => closeModal(deleteModal));
+  document.getElementById("confirmDelete")?.addEventListener("click", async () => {
+    if (!pendingId) return;
+    try {
+      await deleteSource(pendingId);
+      closeModal(deleteModal);
+      pendingId = null;
+      await load();
+    } catch (err: any) {
+  console.error(err);
+  closeModal(deleteModal);
+}
+  });
+
+  load();
+</script>

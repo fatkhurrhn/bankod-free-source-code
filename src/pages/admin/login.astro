@@ -1,0 +1,47 @@
+---
+import Layout from "../../layouts/Layout.astro";
+---
+
+<Layout>
+  <form id="loginForm" class="max-w-sm mx-auto p-8 flex flex-col gap-4">
+    <h1 class="text-xl font-semibold mb-2">Login Admin</h1>
+
+    <label class="flex flex-col gap-1 text-sm">
+      Email
+      <input type="email" name="email" required class="border border-gray-300 rounded-md px-3 py-2" />
+    </label>
+
+    <label class="flex flex-col gap-1 text-sm">
+      Password
+      <input type="password" name="password" required class="border border-gray-300 rounded-md px-3 py-2" />
+    </label>
+
+    <p id="error" class="text-red-600 text-sm hidden"></p>
+
+    <button type="submit" class="bg-gray-900 text-white py-2 rounded-md text-sm">Masuk</button>
+  </form>
+</Layout>
+
+<script>
+  import { signInWithEmailAndPassword } from "firebase/auth";
+  import { auth } from "../../lib/firebase";
+
+  const form = document.getElementById("loginForm") as HTMLFormElement;
+  const errorEl = document.getElementById("error") as HTMLParagraphElement;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorEl.classList.add("hidden");
+
+    const email = (form.email as HTMLInputElement).value;
+    const password = (form.password as HTMLInputElement).value;
+
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      window.location.href = "/admin";
+    } catch (err: any) {
+      errorEl.textContent = "Email atau password salah.";
+      errorEl.classList.remove("hidden");
+    }
+  });
+</script>
